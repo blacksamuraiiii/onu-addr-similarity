@@ -1,11 +1,11 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import pandas as pd
 import os
 import threading
 from datetime import datetime
 from Levenshtein import distance as levenshtein_distance
+import openpyxl
 
 class AddressSimilarityApp(ctk.CTk):
     def __init__(self):
@@ -177,11 +177,10 @@ class AddressSimilarityApp(ctk.CTk):
     def load_column_names(self, filename):
         """加载Excel文件的列名"""
         try:
-            # 读取Excel文件
-            df = pd.read_excel(filename)
-
-            # 获取列名
-            self.column_options = df.columns.tolist()
+            workbook = openpyxl.load_workbook(filename, read_only=True)
+            sheet = workbook.active
+            self.column_options = [cell.value for cell in sheet[1]]
+            workbook.close()
 
             # 更新下拉框选项
             self.col1_combobox.configure(values=self.column_options)
@@ -189,17 +188,15 @@ class AddressSimilarityApp(ctk.CTk):
 
             # 设置默认选择（如果有对应的列）
             default_cols = ['最早光交名称', '竣工光交名称']
-            for i, col in enumerate(default_cols):
-                if col in self.column_options:
-                    if i == 0:
-                        self.selected_col1.set(col)
-                    else:
-                        self.selected_col2.set(col)
+            if default_cols[0] in self.column_options:
+                self.selected_col1.set(default_cols[0])
+            if default_cols[1] in self.column_options:
+                self.selected_col2.set(default_cols[1])
 
             self.log_message(f"文件包含 {len(self.column_options)} 列：{', '.join(self.column_options[:5])}...")
 
         except Exception as e:
-            raise Exception(f"读取列名失败：{str(e)}")
+            raise Exception(f"使用openpyxl读取列名失败：{str(e)}")
 
     def run_similarity_matching(self):
         """运行相似度匹配"""
@@ -234,24 +231,31 @@ class AddressSimilarityApp(ctk.CTk):
             self.log_message(f"对比列：{col1} vs {col2}")
 
             # 读取数据
-            self.log_message("正在读取Excel文件...")
-            data = pd.read_excel(self.selected_file)
+            self.log_message("正在读取Excel文件 (使用 openpyxl)...")
+            workbook = openpyxl.load_workbook(self.selected_file)
+            sheet = workbook.active
 
-            # 验证列是否存在
-            self.log_message("验证列存在性...")
-            if col1 not in data.columns:
-                raise ValueError(f"列 '{col1}' 在文件中不存在！")
-            if col2 not in data.columns:
-                raise ValueError(f"列 '{col2}' 在文件中不存在！")
+            # 获取表头和列索引
+            headers = [cell.value for cell in sheet[1]]
+            if col1 not in headers or col2 not in headers:
+                raise ValueError(f"选择的列在文件中不存在！")
+            
+            col1_idx = headers.index(col1) + 1
+            col2_idx = headers.index(col2) + 1
+
+            # 添加新的“相似度”列
+            similarity_col_idx = sheet.max_column + 1
+            sheet.cell(row=1, column=similarity_col_idx, value="相似度")
 
             # 计算相似度
-            self.log_message("开始计算地址相似度...")
-            data['相似度'] = data.apply(
-                lambda row: self.calculate_address_similarity(
-                    row[col1], row[col2]
-                ),
-                axis=1
-            )
+            self.log_message(f"开始计算地址相似度 (共 {sheet.max_row - 1} 行)...")
+            for i, row in enumerate(sheet.iter_rows(min_row=2, values_only=True)):
+                addr1 = row[col1_idx - 1]
+                addr2 = row[col2_idx - 1]
+                similarity = self.calculate_address_similarity(addr1, addr2)
+                sheet.cell(row=i + 2, column=similarity_col_idx, value=similarity)
+                if (i + 1) % 100 == 0:
+                    self.log_message(f"已处理 {i + 1} 行...")
 
             # 生成输出文件名
             input_filename = os.path.basename(self.selected_file)
@@ -260,10 +264,11 @@ class AddressSimilarityApp(ctk.CTk):
 
             # 保存结果
             self.log_message(f"正在保存结果至：{output_filename}")
-            data.to_excel(output_path, index=False)
+            workbook.save(output_path)
+            workbook.close()
 
             # 完成
-            self.log_message("处理完成！")
+            self.log_message(f"处理完成！共处理 {sheet.max_row - 1} 行。")
             self.log_message(f"输出文件：{output_path}")
 
             # 在主线程中显示成功消息
@@ -294,11 +299,11 @@ class AddressSimilarityApp(ctk.CTk):
 
         # 统一处理空值和格式，并过滤关键词
         addr1_processed = self.filter_keywords(
-            str(addr1).strip() if pd.notna(addr1) else "",
+            str(addr1).strip() if addr1 is not None else "",
             target_prefixes
         )
         addr2_processed = self.filter_keywords(
-            str(addr2).strip() if pd.notna(addr2) else "",
+            str(addr2).strip() if addr2 is not None else "",
             target_prefixes
         )
 

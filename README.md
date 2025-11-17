@@ -1,6 +1,6 @@
-# ODN Similarity - 宽带地址相似度匹配工具
+# ONU Address Similarity - 宽带地址相似度匹配工具
 
-`odn_similarity` 是一个基于 Python 和 CustomTkinter 的桌面应用程序，旨在帮助用户快速、准确地对比 Excel 文件中两列地址的相似度。该工具特别适用于需要核查和匹配大量地址信息的场景，例如在电信ODN（光分配网络）资源管理中。
+`onu-addr-similarity` 是一个基于 Python 和 CustomTkinter 的桌面应用程序，旨在帮助用户快速、准确地对比 Excel 文件中两列地址的相似度。该工具特别适用于需要核查和匹配大量地址信息的场景，例如在电信ODN（光分配网络）资源管理中。
 
 
 ## ✨ 功能特性
